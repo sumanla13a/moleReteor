@@ -7,9 +7,12 @@
  */
 if (!Meteor.roles) {
   Meteor.roles = new Meteor.Collection("roles")
+  Meteor.groups = new Meteor.Collection("groups")
 
   // Create default indexes for roles collection
   Meteor.roles._ensureIndex('name', {unique: 1})
+  Meteor.groups._ensureIndex('name', {unique: 1})
+
 }
 
 

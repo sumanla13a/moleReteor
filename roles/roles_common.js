@@ -13,7 +13,9 @@
 if (!Meteor.roles) {
   Meteor.roles = new Meteor.Collection("roles")
 }
-
+if(!Meteor.groups) {
+  Meteor.groups = new Meteor.Collection("groups")
+}
 /**
  * Authorization package compatible with built-in Meteor accounts system.
  *
@@ -106,6 +108,7 @@ _.extend(Roles, {
     var thisRole = Meteor.roles.findOne({name: role})
     if (thisRole) {
       Meteor.roles.remove({_id: thisRole._id})
+      Meteor.groups.update({roles: role}, {$pull: {roles: role}}, {multi: true}})
     }
   },
 
@@ -142,6 +145,19 @@ _.extend(Roles, {
    */
   addUsersToRoles: function (users, roles, group) {
     // use Template pattern to update user roles
+    if(group) {
+      _group = Meteor.groups.findOne({name: group})
+      if(!_group)
+        Meteor.groups.insert({name: group, roles: roles})
+      else {
+        var newRoles = []
+        _.each(roles, function(role) {
+          if(_group.roles.indexOf(role) === -1)
+            newRoles.push(role)
+        })
+        Meteor.groups.update({name: group}, {$addToSet: {roles: newRoles}})
+      }
+    }
     Roles._updateUserRoles(users, roles, group, Roles._update_$addToSet_fn)
   },
 
@@ -364,6 +380,28 @@ _.extend(Roles, {
 
     found = Meteor.users.findOne(query, {fields: {_id: 1}})
     return found ? true : false
+  },
+
+  /**
+    * @method getAllGroups
+  */
+  getAllGroups: function() {
+    return Meteor.groups.find({}, {sort: {name: 1}, fields: {name: 1}})
+  },
+  /**
+    * @method getAllRolesInGroup
+    * @param {String} group Group name
+  */
+  getAllRolesInGroup: function(group) {
+    return Meteor.groups.find({name: group}, {fields: {roles: 1}})
+  },
+
+  addRoleToGroup: function(group, role) {
+    exists = Meteor.roles.findOne({name: role})
+    if(exists)
+      return Meteor.groups.update({name: group}, {$addToSet: {roles: role}})
+    else
+      throw new Meteor.Error("Create the role first")
   },
 
   /**
@@ -605,96 +643,96 @@ _.extend(Roles, {
    *   @param {Array} roles
    *   @param {String} [group]
    */
-  _updateUserRoles: function (users, roles, group, updateFactory) {
-    if (!users) throw new Error ("Missing 'users' param")
-    if (!roles) throw new Error ("Missing 'roles' param")
-    if (group) {
-      if ('string' !== typeof group)
-        throw new Error ("Roles error: Invalid parameter 'group'. Expected 'string' type")
-      if ('$' === group[0])
-        throw new Error ("Roles error: groups can not start with '$'")
-
-      // convert any periods to underscores
-      group = group.replace(/\./g, '_')
-    }
-
-    var existingRoles,
-        query,
-        update
-
-    // ensure arrays to simplify code
-    if (!_.isArray(users)) users = [users]
-    if (!_.isArray(roles)) roles = [roles]
-
-    // remove invalid roles
-    roles = _.reduce(roles, function (memo, role) {
-      if (role
-          && 'string' === typeof role
-          && role.trim().length > 0) {
-        memo.push(role.trim())
-      }
-      return memo
-    }, [])
-
-    // empty roles array is ok, since it might be a $set operation to clear roles
-    //if (roles.length === 0) return
-
-    // ensure all roles exist in 'roles' collection
-    existingRoles = _.reduce(Meteor.roles.find({}).fetch(), function (memo, role) {
-      memo[role.name] = true
-      return memo
-    }, {})
-    _.each(roles, function (role) {
-      if (!existingRoles[role]) {
-        Roles.createRole(role)
-      }
-    })
-
-    // ensure users is an array of user ids
-    users = _.reduce(users, function (memo, user) {
-      var _id
-      if ('string' === typeof user) {
-        memo.push(user)
-      } else if ('object' === typeof user) {
-        _id = user._id
-        if ('string' === typeof _id) {
-          memo.push(_id)
-        }
-      }
-      return memo
-    }, [])
-    
-    // update all users
-    update = updateFactory(roles, group)
-    
-    try {
-      if (Meteor.isClient) {
-        // On client, iterate over each user to fulfill Meteor's 
-        // 'one update per ID' policy
-        _.each(users, function (user) {
-          Meteor.users.update({_id: user}, update)
-        })
-      } else {
-        // On the server we can use MongoDB's $in operator for 
-        // better performance
-        Meteor.users.update(
-          {_id: {$in: users}},
-          update,
-          {multi: true})
-      }
-    }
-    catch (ex) {
-      var addNonGroupToGroupedRolesMsg = 'Cannot apply $addToSet modifier to non-array',
-          addGrouped2NonGroupedMsg = "can't append to array using string field name"
-
-      if (ex.name === 'MongoError' &&
-          (ex.err === addNonGroupToGroupedRolesMsg ||
-           ex.err.substring(0, 45) === addGrouped2NonGroupedMsg)) {
-        throw new Error (mixingGroupAndNonGroupErrorMsg)
-      }
-
-      throw ex
-    }
+  _updateUserRoles: function (users, roles, group, updateFactory) {                                        // 608
+    if (!users) throw new Error ("Missing 'users' param")                                                  // 609
+    if (!roles) throw new Error ("Missing 'roles' param")                                                  // 610
+    if (group) {                                                                                           // 611
+      if ('string' !== typeof group)                                                                       // 612
+        throw new Error ("Roles error: Invalid parameter 'group'. Expected 'string' type")                 // 613
+      if ('$' === group[0])                                                                                // 614
+        throw new Error ("Roles error: groups can not start with '$'")                                     // 615
+                                                                                                           // 616
+      // convert any periods to underscores                                                                // 617
+      group = group.replace(/\./g, '_')                                                                    // 618
+    }                                                                                                      // 619
+                                                                                                           // 620
+    var existingRoles,                                                                                     // 621
+        query,                                                                                             // 622
+        update                                                                                             // 623
+                                                                                                           // 624
+    // ensure arrays to simplify code                                                                      // 625
+    if (!_.isArray(users)) users = [users]                                                                 // 626
+    if (!_.isArray(roles)) roles = [roles]                                                                 // 627
+                                                                                                           // 628
+    // remove invalid roles                                                                                // 629
+    roles = _.reduce(roles, function (memo, role) {                                                        // 630
+      if (role                                                                                             // 631
+          && 'string' === typeof role                                                                      // 632
+          && role.trim().length > 0) {                                                                     // 633
+        memo.push(role.trim())                                                                             // 634
+      }                                                                                                    // 635
+      return memo                                                                                          // 636
+    }, [])                                                                                                 // 637
+                                                                                                           // 638
+    // empty roles array is ok, since it might be a $set operation to clear roles                          // 639
+    //if (roles.length === 0) return                                                                       // 640
+                                                                                                           // 641
+    // ensure all roles exist in 'roles' collection                                                        // 642
+    existingRoles = _.reduce(Meteor.roles.find({}).fetch(), function (memo, role) {                        // 643
+      memo[role.name] = true                                                                               // 644
+      return memo                                                                                          // 645
+    }, {})                                                                                                 // 646
+    _.each(roles, function (role) {                                                                        // 647
+      if (!existingRoles[role]) {                                                                          // 648
+        Roles.createRole(role)                                                                             // 649
+      }                                                                                                    // 650
+    })                                                                                                     // 651
+                                                                                                           // 652
+    // ensure users is an array of user ids                                                                // 653
+    users = _.reduce(users, function (memo, user) {                                                        // 654
+      var _id                                                                                              // 655
+      if ('string' === typeof user) {                                                                      // 656
+        memo.push(user)                                                                                    // 657
+      } else if ('object' === typeof user) {                                                               // 658
+        _id = user._id                                                                                     // 659
+        if ('string' === typeof _id) {                                                                     // 660
+          memo.push(_id)                                                                                   // 661
+        }                                                                                                  // 662
+      }                                                                                                    // 663
+      return memo                                                                                          // 664
+    }, [])                                                                                                 // 665
+                                                                                                           // 666
+    // update all users                                                                                    // 667
+    update = updateFactory(roles, group)                                                                   // 668
+                                                                                                           // 669
+    try {                                                                                                  // 670
+      if (Meteor.isClient) {                                                                               // 671
+        // On client, iterate over each user to fulfill Meteor's                                           // 672
+        // 'one update per ID' policy                                                                      // 673
+        _.each(users, function (user) {                                                                    // 674
+          Meteor.users.update({_id: user}, update)                                                         // 675
+        })                                                                                                 // 676
+      } else {                                                                                             // 677
+        // On the server we can use MongoDB's $in operator for                                             // 678
+        // better performance                                                                              // 679
+        Meteor.users.update(                                                                               // 680
+          {_id: {$in: users}},                                                                             // 681
+          update,                                                                                          // 682
+          {multi: true})                                                                                   // 683
+      }                                                                                                    // 684
+    }                                                                                                      // 685
+    catch (ex) {                                                                                           // 686
+      var addNonGroupToGroupedRolesMsg = 'Cannot apply $addToSet modifier to non-array',                   // 687
+          addGrouped2NonGroupedMsg = "can't append to array using string field name"                       // 688
+                                                                                                           // 689
+      if (ex.name === 'MongoError' &&                                                                      // 690
+          (ex.err === addNonGroupToGroupedRolesMsg ||                                                      // 691
+           ex.err.substring(0, 45) === addGrouped2NonGroupedMsg)) {                                        // 692
+        throw new Error (mixingGroupAndNonGroupErrorMsg)                                                   // 693
+      }                                                                                                    // 694
+                                                                                                           // 695
+      throw ex                                                                                             // 696
+    }                                                                                                      // 697
   }  // end _updateUserRoles
 
 })  // end _.extend(Roles ...)
